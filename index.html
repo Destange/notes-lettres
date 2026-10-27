@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
+  <title>Notes/Lettres — Flashcards Musicales</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,400&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --bg:          #F5F0E8;
+      --card:        #FFFFFF;
+      --text:        #1C1C1C;
+      --muted:       #8C8880;
+      --border:      #E8E0D5;
+      --accent:      #B85C2A;
+      --accent-light:#F5E0CE;
+      --correct:     #2D8C5F;
+      --wrong:       #C03A2B;
+      /* Distinction des deux systèmes de notation */
+      --sys-letter:  #1A4A7A;   /* bleu profond — anglais/international */
+      --sys-letter-bg:#E8EFF7;
+      --sys-solfege:    #B85C2A;   /* orange — notation française (= --accent) */
+      --sys-solfege-bg: #F5E0CE;  /* orange light (= --accent-light) */
+    }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body {
+      font-family:'Outfit',sans-serif;
+      background:var(--bg);
+      color:var(--text);
+      min-height:100svh;
+      display:flex; flex-direction:column; align-items:center;
+      padding:0 16px 64px;
+    }
+    #app { width:100%; max-width:430px; display:flex; flex-direction:column; align-items:center; }
+
+    /* ── HEADER ── */
+    .header { width:100%; display:flex; align-items:center; justify-content:space-between; padding:18px 0; }
+    .header-title { font-family:'Playfair Display',serif; font-size:19px; letter-spacing:-0.3px; }
+    .header-title b { color:var(--accent); font-weight:700; }
+    .btn-ghost { font-family:'Outfit',sans-serif; font-size:13px; font-weight:500; color:var(--accent); background:var(--accent-light); border:none; padding:7px 14px; border-radius:20px; cursor:pointer; transition:opacity .15s; }
+    .btn-ghost:hover { opacity:.72; }
+
+    /* ── PROGRESS BAR ── */
+    .prog-wrap { width:100%; margin-bottom:18px; }
+    .prog-meta { display:flex; justify-content:space-between; font-size:12px; color:var(--muted); margin-bottom:7px; }
+    .prog-meta .tries-count { font-weight:600; color:var(--text); }
+    .prog-track { height:5px; background:var(--border); border-radius:3px; overflow:hidden; }
+    .prog-fill { height:100%; border-radius:3px; transition:width .4s ease; }
+
+    /* ── CARD ── */
+    .card-scene { width:100%; perspective:900px; margin-bottom:20px; }
+    .card-body { width:100%; height:340px; position:relative; transform-style:preserve-3d; transition:transform 0.52s cubic-bezier(.4,0,.2,1); }
+    .card-body.flipped { transform:rotateY(180deg); }
+    .card-face { position:absolute; inset:0; background:var(--card); border-radius:22px; box-shadow:0 2px 10px rgba(0,0,0,.06),0 8px 28px rgba(0,0,0,.07); backface-visibility:hidden; -webkit-backface-visibility:hidden; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:28px 24px; overflow:hidden; }
+    .card-face.back { transform:rotateY(180deg); }
+
+    /* Bande colorée en haut de la carte selon le système */
+    .card-face::before { content:''; position:absolute; top:0; left:0; right:0; height:5px; border-radius:22px 22px 0 0; }
+    .card-face.system-letter::before { background:var(--sys-letter); }
+    .card-face.system-solfege::before { background:var(--sys-solfege); }
+
+    .system-pill {
+      font-size:10px; font-weight:600; letter-spacing:2px; text-transform:uppercase;
+      padding:5px 12px; border-radius:20px; margin-bottom:24px;
+    }
+    .system-pill.letter  { background:var(--sys-letter);     color:#FFF; }
+    .system-pill.solfege { background:var(--sys-solfege-bg); color:var(--sys-solfege); }
+    .system-pill.answer  { background:#F0F0F0; color:var(--muted); }
+
+    .note-display {
+      font-family:'Playfair Display',serif;
+      line-height:1; text-align:center;
+      letter-spacing:-2px;
+    }
+    .note-display.letter-style  { font-size:120px; color:var(--sys-letter);  letter-spacing:-3px; }
+    .note-display.solfege-style { font-size:100px; color:var(--sys-solfege); letter-spacing:-2px; }
+    .note-display.answer-letter  { font-size:120px; color:var(--sys-letter);  letter-spacing:-3px; }
+    .note-display.answer-solfege { font-size:100px; color:var(--sys-solfege); letter-spacing:-2px; }
+
+    .card-hint { font-size:13px; color:var(--muted); margin-top:18px; text-align:center; font-weight:300; }
+
+    /* ── BOUTONS ── */
+    .btn-main { width:100%; padding:18px; font-family:'Outfit',sans-serif; font-size:16px; font-weight:500; background:var(--text); color:#FFF; border:none; border-radius:16px; cursor:pointer; transition:opacity .12s,transform .1s; margin-bottom:12px; }
+    .btn-main:hover { opacity:.84; }
+    .btn-main:active { transform:scale(.985); }
+    .btn-row { width:100%; display:flex; gap:12px; opacity:0; pointer-events:none; transition:opacity .25s ease; }
+    .btn-row.vis { opacity:1; pointer-events:all; }
+    .btn-ok,.btn-ko { flex:1; padding:17px; font-family:'Outfit',sans-serif; font-size:15px; font-weight:600; border:none; border-radius:16px; cursor:pointer; transition:opacity .12s,transform .1s; display:flex; align-items:center; justify-content:center; gap:6px; }
+    .btn-ok { background:var(--correct); color:#FFF; }
+    .btn-ko { background:var(--wrong);   color:#FFF; }
+    .btn-ok:hover,.btn-ko:hover { opacity:.84; }
+    .btn-ok:active,.btn-ko:active { transform:scale(.985); }
+
+    /* ── HOME ── */
+    .home { width:100%; display:flex; flex-direction:column; align-items:center; padding-top:36px; }
+    .home-logo { font-size:48px; margin-bottom:16px; }
+    .home-h1 { font-family:'Playfair Display',serif; font-size:42px; line-height:1.1; letter-spacing:-2px; text-align:center; margin-bottom:6px; }
+    .home-h1 em { color:var(--accent); font-style:italic; }
+    .home-tagline { font-size:13px; color:var(--muted); text-align:center; font-weight:300; margin-bottom:30px; line-height:1.6; }
+
+    /* Panneau de correspondances (preview sur l'accueil) */
+    .home-preview { width:100%; background:var(--card); border-radius:20px; padding:20px; box-shadow:0 1px 8px rgba(0,0,0,.06); margin-bottom:28px; }
+    .home-preview-title { font-size:10px; font-weight:600; letter-spacing:2px; text-transform:uppercase; color:var(--muted); margin-bottom:16px; text-align:center; }
+    .home-notes-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
+    .home-note-cell { display:flex; flex-direction:column; align-items:center; gap:4px; }
+    .home-note-letter  { font-family:'Playfair Display',serif; font-size:18px; color:var(--sys-letter);  font-weight:700; line-height:1; }
+    .home-note-divider { width:1px; height:12px; background:var(--border); }
+    .home-note-solfege { font-family:'Playfair Display',serif; font-size:18px; color:var(--sys-solfege); font-weight:700; line-height:1; }
+
+    /* Stats strip */
+    .home-stats { width:100%; display:flex; gap:10px; margin-bottom:24px; }
+    .stat-pill { flex:1; background:var(--card); border-radius:14px; padding:14px 10px; text-align:center; box-shadow:0 1px 6px rgba(0,0,0,.05); }
+    .stat-n { font-family:'Playfair Display',serif; font-size:26px; display:block; line-height:1; margin-bottom:3px; }
+    .stat-l { font-size:10px; color:var(--muted); }
+
+    .btn-start { width:100%; padding:20px; font-family:'Outfit',sans-serif; font-size:17px; font-weight:600; background:var(--accent); color:#FFF; border:none; border-radius:18px; cursor:pointer; transition:opacity .12s,transform .1s; box-shadow:0 5px 20px rgba(184,92,42,.28); margin-bottom:14px; }
+    .btn-start:hover { opacity:.88; }
+    .btn-start:active { transform:scale(.985); }
+    .btn-ref-link { background:none; border:none; font-family:'Outfit',sans-serif; font-size:14px; color:var(--muted); cursor:pointer; padding:8px; text-decoration:underline; text-decoration-color:var(--border); }
+    .btn-ref-link:hover { color:var(--text); }
+
+    /* ── END SCREEN ── */
+    .end-screen { width:100%; display:flex; flex-direction:column; align-items:center; padding-top:24px; }
+    .end-badge { font-size:11px; font-weight:600; letter-spacing:2px; text-transform:uppercase; padding:6px 14px; border-radius:20px; margin-bottom:28px; background:var(--accent-light); color:var(--accent); }
+    .end-score-wrap { text-align:center; margin-bottom:28px; }
+    .end-emoji { font-size:52px; margin-bottom:12px; display:block; }
+    .end-score { font-family:'Playfair Display',serif; font-size:68px; line-height:1; letter-spacing:-2px; }
+    .end-score span { font-size:32px; color:var(--muted); letter-spacing:0; }
+    .end-label { font-size:14px; color:var(--muted); margin-top:6px; }
+    .end-mastery-card { width:100%; background:var(--card); border-radius:18px; padding:20px 22px; margin-bottom:24px; box-shadow:0 1px 8px rgba(0,0,0,.06); }
+    .end-mastery-title { font-size:11px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; color:var(--muted); margin-bottom:14px; }
+    .end-mastery-row { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    .end-m-val { font-family:'Playfair Display',serif; font-size:30px; white-space:nowrap; }
+    .end-m-val .slash { font-size:18px; color:var(--muted); }
+    .end-track { flex:1; }
+    .end-prog-track { height:6px; background:var(--border); border-radius:3px; overflow:hidden; }
+    .end-prog-fill { height:100%; border-radius:3px; transition:width .8s ease; }
+    .end-prog-pct { font-size:11px; color:var(--muted); margin-top:4px; text-align:right; }
+    .end-m-delta { font-size:13px; font-weight:500; margin-top:10px; }
+    .end-m-delta.up   { color:var(--correct); }
+    .end-m-delta.same { color:var(--muted); }
+    .end-btn-row { width:100%; display:flex; gap:12px; }
+    .btn-replay { flex:1; padding:17px; font-family:'Outfit',sans-serif; font-size:15px; font-weight:600; border:none; border-radius:16px; cursor:pointer; transition:opacity .12s; color:#FFF; background:var(--accent); }
+    .btn-replay:hover { opacity:.84; }
+    .btn-home-end { flex:1; padding:17px; font-family:'Outfit',sans-serif; font-size:15px; font-weight:500; border:1.5px solid var(--border); border-radius:16px; cursor:pointer; background:var(--card); color:var(--text); transition:background .12s; }
+    .btn-home-end:hover { background:var(--border); }
+
+    /* ── REFERENCE ── */
+    .ref-screen { width:100%; }
+    .ref-top { display:flex; align-items:center; gap:14px; padding:18px 0 16px; }
+    .btn-circ { width:36px; height:36px; flex-shrink:0; background:var(--card); border:1.5px solid var(--border); border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:15px; transition:background .12s; }
+    .btn-circ:hover { background:var(--border); }
+    .ref-h { font-family:'Playfair Display',serif; font-size:21px; }
+    .sort-bar { width:100%; display:flex; gap:6px; margin-bottom:16px; flex-wrap:wrap; }
+    .sort-btn { font-family:'Outfit',sans-serif; font-size:12px; font-weight:500; padding:7px 13px; border-radius:20px; border:1.5px solid var(--border); background:var(--card); color:var(--muted); cursor:pointer; transition:all .14s; white-space:nowrap; }
+    .sort-btn.active { background:var(--text); color:#FFF; border-color:var(--text); }
+
+    .ref-list { display:flex; flex-direction:column; gap:10px; }
+    .ref-item { background:var(--card); border-radius:16px; padding:16px 20px; display:flex; align-items:center; gap:0; box-shadow:0 1px 6px rgba(0,0,0,.05); }
+    .ref-letter  { font-family:'Playfair Display',serif; font-size:42px; font-weight:700; color:var(--sys-letter);  width:56px; flex-shrink:0; line-height:1; display:flex; align-items:center; }
+    .ref-arrow   { flex-shrink:0; margin:0 10px; display:flex; align-items:center; justify-content:center; }
+    .ref-solfege { font-family:'Playfair Display',serif; font-size:42px; font-weight:700; color:var(--sys-solfege); flex:1; line-height:1; display:flex; align-items:center; }
+    .ref-bars { flex:1; display:flex; flex-direction:column; gap:5px; }
+    .ref-bar-row { display:flex; align-items:center; gap:8px; }
+    .ref-bar-label { font-size:9px; font-weight:600; letter-spacing:0.5px; text-transform:uppercase; width:52px; flex-shrink:0; }
+    .ref-bar-label.l { color:var(--sys-letter); }
+    .ref-bar-label.s { color:var(--sys-solfege); }
+    .ref-bar-track { flex:1; height:4px; background:var(--border); border-radius:2px; overflow:hidden; }
+    .ref-bar-fill { height:100%; border-radius:2px; }
+    .ref-bar-fill.l { background:var(--sys-letter); }
+    .ref-bar-fill.s { background:var(--sys-solfege); }
+    .ref-pct { font-size:10px; color:var(--muted); width:26px; text-align:right; }
+    .ref-footer { margin-top:24px; text-align:center; }
+    .btn-reset { background:none; border:none; font-family:'Outfit',sans-serif; font-size:12px; color:var(--muted); cursor:pointer; padding:8px; text-decoration:underline; text-decoration-color:var(--border); }
+    .btn-reset:hover { color:var(--wrong); }
+
+    /* ── ANIMATIONS ── */
+    @keyframes fadeUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+    .fadein { animation:fadeUp .32s ease forwards; }
+    @keyframes popIn { from{opacity:0;transform:scale(.88)} to{opacity:1;transform:scale(1)} }
+    .popin { animation:popIn .4s cubic-bezier(.34,1.56,.64,1) forwards; }
+
+    @media(min-width:400px){
+      .card-body{height:380px;}
+      .note-display.letter-style, .note-display.answer-letter   { font-size:130px; }
+      .note-display.solfege-style,.note-display.answer-solfege  { font-size:110px; }
+    }
+    @media(max-width:340px){
+      .note-display.letter-style, .note-display.answer-letter   { font-size:96px; }
+      .note-display.solfege-style,.note-display.answer-solfege  { font-size:80px; }
+    }
+  </style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+/* ══════════════════════════════════════
+   DONNÉES — 7 notes, 2 systèmes
+══════════════════════════════════════ */
+var NOTES = [
+  { id:'A', letter:'A', solfege:'La'  },
+  { id:'B', letter:'B', solfege:'Si'  },
+  { id:'C', letter:'C', solfege:'Do'  },
+  { id:'D', letter:'D', solfege:'Ré'  },
+  { id:'E', letter:'E', solfege:'Mi'  },
+  { id:'F', letter:'F', solfege:'Fa'  },
+  { id:'G', letter:'G', solfege:'Sol' },
+];
+
+var SESSION_LENGTH = 10;
+
+/* ══════════════════════════════════════
+   AUDIO
+   Success : accord majeur montant (combo)
+   Fail    : glissando descendant discret
+   Victory : fanfare pour série parfaite
+══════════════════════════════════════ */
+var _audioCtx = null;
+function getAudioCtx(){
+  if(!_audioCtx){ try{ _audioCtx=new(window.AudioContext||window.webkitAudioContext)(); }catch(e){} }
+  return _audioCtx;
+}
+function playSuccess(streak){
+  var ctx=getAudioCtx(); if(!ctx) return;
+  streak=streak||0;
+  var shift=Math.pow(Math.pow(2,1/12),streak);
+  var now=ctx.currentTime;
+  [[220.00,0.12],[277.18,0.09],[329.63,0.07]].forEach(function(p){
+    var o=ctx.createOscillator(),g=ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.type='sine'; o.frequency.value=p[0]*shift;
+    g.gain.setValueAtTime(0,now);
+    g.gain.linearRampToValueAtTime(p[1],now+0.014);
+    g.gain.exponentialRampToValueAtTime(0.0001,now+0.58);
+    o.start(now); o.stop(now+0.59);
+  });
+}
+function playFail(){
+  var ctx=getAudioCtx(); if(!ctx) return;
+  var now=ctx.currentTime;
+  [[311.13,0.10],[233.08,0.08]].forEach(function(p,i){
+    var d=i*0.10,o=ctx.createOscillator(),g=ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.type='sine';
+    o.frequency.setValueAtTime(p[0],now+d);
+    o.frequency.linearRampToValueAtTime(p[0]*0.92,now+d+0.20);
+    g.gain.setValueAtTime(0,now+d);
+    g.gain.linearRampToValueAtTime(p[1],now+d+0.018);
+    g.gain.exponentialRampToValueAtTime(0.0001,now+d+0.38);
+    o.start(now+d); o.stop(now+d+0.39);
+  });
+}
+function playVictory(){
+  var ctx=getAudioCtx(); if(!ctx) return;
+  var now=ctx.currentTime;
+  [[261.63,0],[329.63,0.07],[392.00,0.14],[523.25,0.21]].forEach(function(p){
+    var o=ctx.createOscillator(),g=ctx.createGain();
+    o.connect(g); g.connect(ctx.destination); o.type='triangle';
+    o.frequency.value=p[0];
+    var t=now+p[1];
+    g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(0.18,t+0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+0.28);
+    o.start(t); o.stop(t+0.30);
+  });
+  [[523.25,0.16],[659.25,0.13],[784.00,0.10],[1046.50,0.07]].forEach(function(p){
+    var o=ctx.createOscillator(),g=ctx.createGain();
+    o.connect(g); g.connect(ctx.destination); o.type='sine';
+    o.frequency.value=p[0];
+    var t=now+0.30;
+    g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(p[1],t+0.025);
+    g.gain.setValueAtTime(p[1],t+0.30); g.gain.exponentialRampToValueAtTime(0.0001,t+0.90);
+    o.start(t); o.stop(t+0.92);
+  });
+  [1046.50,1318.51].forEach(function(freq,i){
+    var o=ctx.createOscillator(),g=ctx.createGain();
+    o.connect(g); g.connect(ctx.destination); o.type='sine';
+    o.frequency.value=freq;
+    var t=now+0.65+i*0.07;
+    g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(0.06,t+0.015);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+0.35);
+    o.start(t); o.stop(t+0.36);
+  });
+}
+
+/* ══════════════════════════════════════
+   SM-2 — RÉPÉTITION ESPACÉE
+══════════════════════════════════════ */
+var STORAGE_KEY = 'notecode_v1';
+var DAY_MS = 24*60*60*1000;
+
+// items : deux faces par note
+var ALL_ITEMS = [];
+NOTES.forEach(function(n){
+  ALL_ITEMS.push({ key:n.id+'_letter',  noteId:n.id, side:'letter'  });
+  ALL_ITEMS.push({ key:n.id+'_solfege', noteId:n.id, side:'solfege' });
+});
+
+var sr = loadSR();
+
+function freshItem(){ return { interval:1, ef:2.5, reps:0, due:0, lastReview:0 }; }
+
+function loadSR(){
+  try{
+    var raw=localStorage.getItem(STORAGE_KEY);
+    if(raw){
+      var p=JSON.parse(raw);
+      ALL_ITEMS.forEach(function(it){ if(!p.items[it.key]) p.items[it.key]=freshItem(); });
+      return p;
+    }
+  }catch(e){}
+  var f={ items:{} };
+  ALL_ITEMS.forEach(function(it){ f.items[it.key]=freshItem(); });
+  return f;
+}
+function saveSR(){ try{ localStorage.setItem(STORAGE_KEY,JSON.stringify(sr)); }catch(e){} }
+function resetSR(){
+  sr={ items:{} };
+  ALL_ITEMS.forEach(function(it){ sr.items[it.key]=freshItem(); });
+  saveSR();
+}
+
+function nextItem(lastNoteId){
+  var now=Date.now();
+  var pool=ALL_ITEMS.filter(function(i){ return i.noteId!==lastNoteId; });
+  if(!pool.length) pool=ALL_ITEMS.slice();
+  var overdue=pool.filter(function(i){ return (sr.items[i.key]||freshItem()).due<=now; });
+  if(overdue.length>0) return overdue[Math.floor(Math.random()*overdue.length)];
+  pool.sort(function(a,b){ return (sr.items[a.key]||freshItem()).due-(sr.items[b.key]||freshItem()).due; });
+  var band=Math.max(1,Math.ceil(pool.length/3));
+  var candidates=pool.slice(0,band);
+  return candidates[Math.floor(Math.random()*candidates.length)];
+}
+
+function recordAnswer(key,correct){
+  var now=Date.now();
+  var d=sr.items[key]||freshItem();
+  if(correct){
+    var ni; if(d.reps===0)ni=1; else if(d.reps===1)ni=6; else ni=Math.round(d.interval*d.ef);
+    d.reps++; d.interval=ni;
+  } else {
+    d.reps=0; d.interval=1; d.ef=Math.max(1.3,(d.ef||2.5)-0.15);
+  }
+  d.due=now+d.interval*DAY_MS; d.lastReview=now;
+  sr.items[key]=d; saveSR();
+}
+
+function itemMastery(d){
+  if(!d||d.reps===0) return 0;
+  var iv=d.interval||1;
+  if(d.reps===1) iv=4;
+  return Math.min(Math.sqrt(Math.max(iv-1,0)/88),1);
+}
+
+function noteMastery(id){
+  return {
+    letter:  itemMastery(sr.items[id+'_letter']),
+    solfege: itemMastery(sr.items[id+'_solfege']),
+    avg:    (itemMastery(sr.items[id+'_letter'])+itemMastery(sr.items[id+'_solfege']))/2
+  };
+}
+
+function globalStats(){
+  var total=ALL_ITEMS.length, mastered=0, totalM=0;
+  ALL_ITEMS.forEach(function(it){
+    var m=itemMastery(sr.items[it.key]);
+    totalM+=m;
+    if((sr.items[it.key]||freshItem()).reps>=3) mastered++;
+  });
+  return { mastered:mastered, total:total, pct:Math.round(totalM/total*100) };
+}
+
+/* ══════════════════════════════════════
+   APP STATE
+══════════════════════════════════════ */
+var app = {
+  screen:'home', item:null, lastNoteId:null, refSort:'alpha',
+  session:{ correct:0, total:0, masteryAtStart:0, streak:0 }
+};
+
+function byId(id){ return NOTES.find(function(n){ return n.id===id; }); }
+
+function sessionEmoji(c){
+  if(c===10) return '🥇';
+  if(c===9)  return '🏆';
+  if(c>=7)   return '⭐';
+  if(c>=5)   return '👍';
+  if(c>=3)   return '💪';
+  return '🎯';
+}
+function sessionMsg(c){
+  if(c===10) return 'Série Parfaite !';
+  if(c>=9)   return 'Excellent !';
+  if(c>=7)   return 'Très bien !';
+  if(c>=5)   return "On s'accroche !";
+  if(c>=3)   return 'Continue !';
+  return 'On y retourne !';
+}
+
+/* ══════════════════════════════════════
+   RENDER
+══════════════════════════════════════ */
+function render(){
+  var root=document.getElementById('app');
+  root.innerHTML='';
+  if     (app.screen==='home')      renderHome(root);
+  else if(app.screen==='session')   renderSession(root);
+  else if(app.screen==='end')       renderEnd(root);
+  else if(app.screen==='reference') renderReference(root);
+}
+
+/* ── HOME ── */
+function renderHome(root){
+  var st=globalStats();
+  var div=document.createElement('div');
+  div.className='home fadein';
+
+  var notesRow='';
+  NOTES.forEach(function(n){
+    notesRow+='<div class="home-note-cell">'+
+      '<span class="home-note-letter">'+n.letter+'</span>'+
+      '<div class="home-note-divider"></div>'+
+      '<span class="home-note-solfege">'+n.solfege.toUpperCase()+'</span>'+
+    '</div>';
+  });
+
+  div.innerHTML=
+    '<div class="home-logo">🎵</div>'+
+    '<h1 class="home-h1"><span style="color:var(--sys-solfege)">Notes</span>/<em style="color:var(--sys-letter);font-style:normal">Lettres</em></h1>'+
+    '<p class="home-tagline">Maîtrise la correspondance entre<br>les lettres et les noms de notes</p>'+
+    '<div class="home-preview">'+
+      '<div class="home-preview-title">Correspondances à apprendre</div>'+
+      '<div class="home-notes-grid">'+notesRow+'</div>'+
+    '</div>'+
+    '<div class="home-stats">'+
+      '<div class="stat-pill"><span class="stat-n">14</span><span class="stat-l">faces au total</span></div>'+
+      '<div class="stat-pill"><span class="stat-n" id="hMastered">'+st.mastered+'</span><span class="stat-l">maîtrisées</span></div>'+
+      '<div class="stat-pill"><span class="stat-n" id="hPct">'+st.pct+'</span><span class="stat-l">% progression</span></div>'+
+    '</div>'+
+    '<button class="btn-start" id="bStart">Commencer →</button>'+
+    '<button class="btn-ref-link" id="bRef">Voir toutes les correspondances →</button>';
+
+  root.appendChild(div);
+  document.getElementById('bStart').onclick=function(){
+    var st0=globalStats();
+    app.session={ correct:0, total:0, masteryAtStart:st0.mastered, streak:0 };
+    app.item=nextItem(app.lastNoteId);
+    app.screen='session';
+    render();
+  };
+  document.getElementById('bRef').onclick=function(){ app.screen='reference'; render(); };
+}
+
+/* ── SESSION ── */
+function renderSession(root){
+  var item=app.item;
+  var note=byId(item.noteId);
+  var tryNum=app.session.total+1;
+  var pct=Math.round((app.session.total/SESSION_LENGTH)*100);
+
+  var hdr=document.createElement('div');
+  hdr.className='header';
+  hdr.innerHTML='<div class="header-title">Notes/<b>Lettres</b></div>'+
+    '<button class="btn-ghost" id="bHome">⌂ Accueil</button>';
+  root.appendChild(hdr);
+  document.getElementById('bHome').onclick=function(){ app.screen='home'; render(); };
+
+  var pg=document.createElement('div');
+  pg.className='prog-wrap';
+  pg.innerHTML=
+    '<div class="prog-meta">'+
+      '<span style="color:var(--accent);font-weight:500;">🎵 Session</span>'+
+      '<span class="tries-count">'+tryNum+' / '+SESSION_LENGTH+'</span>'+
+    '</div>'+
+    '<div class="prog-track"><div class="prog-fill" style="width:'+pct+'%;background:var(--correct)"></div></div>';
+  root.appendChild(pg);
+
+  var isLetterFront = (item.side==='letter');
+
+  var frontPill, frontDisplay, frontHint, backPill, backDisplay;
+  if(isLetterFront){
+    frontPill    = '<div class="system-pill letter">International</div>';
+    frontDisplay = '<div class="note-display letter-style">'+note.letter+'</div>';
+    frontHint    = '<div class="card-hint">Quel est le nom en notation française ?</div>';
+    backPill     = '<div class="system-pill solfege">Français</div>';
+    backDisplay  = '<div class="note-display answer-solfege">'+note.solfege.toUpperCase()+'</div>';
+  } else {
+    frontPill    = '<div class="system-pill solfege">Français</div>';
+    frontDisplay = '<div class="note-display solfege-style">'+note.solfege.toUpperCase()+'</div>';
+    frontHint    = '<div class="card-hint">Quelle est la lettre en notation internationale ?</div>';
+    backPill     = '<div class="system-pill letter">International</div>';
+    backDisplay  = '<div class="note-display answer-letter">'+note.letter+'</div>';
+  }
+
+  var frontClass = 'card-face front system-'+(isLetterFront?'letter':'solfege');
+  var backClass  = 'card-face back system-'+(isLetterFront?'solfege':'letter');
+
+  var scene=document.createElement('div');
+  scene.className='card-scene fadein';
+  scene.innerHTML=
+    '<div class="card-body" id="cBody">'+
+      '<div class="'+frontClass+'">'+frontPill+frontDisplay+frontHint+'</div>'+
+      '<div class="'+backClass+'">'+backPill+backDisplay+'</div>'+
+    '</div>';
+  root.appendChild(scene);
+
+  var btnReveal=document.createElement('button');
+  btnReveal.className='btn-main';
+  btnReveal.textContent='Voir la réponse';
+  root.appendChild(btnReveal);
+
+  var btnRow=document.createElement('div');
+  btnRow.className='btn-row';
+  btnRow.id='bRow';
+  btnRow.innerHTML=
+    '<button class="btn-ko" id="bKo">✗&nbsp;&nbsp;À revoir</button>'+
+    '<button class="btn-ok" id="bOk">✓&nbsp;&nbsp;Je savais !</button>';
+  root.appendChild(btnRow);
+
+  btnReveal.onclick=function(){
+    document.getElementById('cBody').classList.add('flipped');
+    btnReveal.style.display='none';
+    setTimeout(function(){ document.getElementById('bRow').classList.add('vis'); },490);
+  };
+
+  function advance(correct){
+    recordAnswer(item.key,correct);
+    if(correct){ playSuccess(app.session.streak); app.session.streak++; }
+    else        { playFail(); app.session.streak=0; }
+    app.lastNoteId=item.noteId;
+    app.session.total++;
+    if(correct) app.session.correct++;
+    if(app.session.total>=SESSION_LENGTH){
+      app.screen='end';
+    } else {
+      app.item=nextItem(item.noteId);
+      app.screen='session';
+    }
+    render();
+  }
+  document.getElementById('bOk').onclick=function(){ advance(true);  };
+  document.getElementById('bKo').onclick=function(){ advance(false); };
+}
+
+/* ── END ── */
+function renderEnd(root){
+  var st=globalStats();
+  var delta=st.mastered-app.session.masteryAtStart;
+  var correct=app.session.correct;
+  var div=document.createElement('div');
+  div.className='end-screen fadein';
+
+  div.innerHTML=
+    '<div class="end-badge">🎵 Notes/Lettres</div>'+
+    '<div class="end-score-wrap popin">'+
+      '<span class="end-emoji">'+sessionEmoji(correct)+'</span>'+
+      '<div class="end-score">'+correct+'<span> / '+SESSION_LENGTH+'</span></div>'+
+      '<div class="end-label">'+sessionMsg(correct)+'</div>'+
+    '</div>'+
+    '<div class="end-mastery-card">'+
+      '<div class="end-mastery-title">Progression globale</div>'+
+      '<div class="end-mastery-row">'+
+        '<div class="end-m-val">'+st.mastered+'<span class="slash"> / '+st.total+'</span></div>'+
+        '<div class="end-track">'+
+          '<div class="end-prog-track"><div class="end-prog-fill" id="endFill" style="width:0%;background:var(--accent)"></div></div>'+
+          '<div class="end-prog-pct">'+st.pct+'% maîtrisé</div>'+
+        '</div>'+
+      '</div>'+
+      (delta>0
+        ?'<div class="end-m-delta up">+'+delta+' face'+(delta>1?'s':'')+' maîtrisée'+(delta>1?'s':'')+' cette session 🎉</div>'
+        :'<div class="end-m-delta same">Continue pour progresser !</div>')+
+    '</div>'+
+    '<div class="end-btn-row">'+
+      '<button class="btn-home-end" id="bEndHome">⌂ Accueil</button>'+
+      '<button class="btn-replay" id="bReplay">↺ Rejouer</button>'+
+    '</div>';
+  root.appendChild(div);
+
+  setTimeout(function(){ var f=document.getElementById('endFill'); if(f) f.style.width=st.pct+'%'; },120);
+  if(correct===SESSION_LENGTH) setTimeout(function(){ playVictory(); },200);
+
+  document.getElementById('bEndHome').onclick=function(){ app.screen='home'; render(); };
+  document.getElementById('bReplay').onclick=function(){
+    var st0=globalStats();
+    app.session={ correct:0, total:0, masteryAtStart:st0.mastered, streak:0 };
+    app.item=nextItem(app.lastNoteId);
+    app.screen='session';
+    render();
+  };
+}
+
+/* ── REFERENCE ── */
+function renderReference(root){
+  var div=document.createElement('div');
+  div.className='ref-screen fadein';
+
+  var top=document.createElement('div');
+  top.className='ref-top';
+  top.innerHTML='<button class="btn-circ" id="bBack">←</button>'+
+    '<h2 class="ref-h">Correspondances</h2>';
+  div.appendChild(top);
+
+  var sortBar=document.createElement('div');
+  sortBar.className='sort-bar';
+  [['alpha','A → G'],['solfege','DO → SI'],['best','★ Maîtrisés'],['worst','↑ À travailler']].forEach(function(s){
+    var b=document.createElement('button');
+    b.className='sort-btn'+(app.refSort===s[0]?' active':'');
+    b.textContent=s[1];
+    b.onclick=function(){ app.refSort=s[0]; renderReference(root); };
+    sortBar.appendChild(b);
+  });
+  div.appendChild(sortBar);
+
+  var sorted=NOTES.slice();
+  var solfegeOrder={ 'Do':0,'Ré':1,'Mi':2,'Fa':3,'Sol':4,'La':5,'Si':6 };
+  if(app.refSort==='alpha')   sorted.sort(function(a,b){ return a.letter.localeCompare(b.letter); });
+  else if(app.refSort==='solfege') sorted.sort(function(a,b){ return (solfegeOrder[a.solfege]||0)-(solfegeOrder[b.solfege]||0); });
+  else if(app.refSort==='best')    sorted.sort(function(a,b){ return noteMastery(b.id).avg-noteMastery(a.id).avg; });
+  else                             sorted.sort(function(a,b){ return noteMastery(a.id).avg-noteMastery(b.id).avg; });
+
+  var list=document.createElement('div');
+  list.className='ref-list';
+  sorted.forEach(function(n){
+    var m=noteMastery(n.id);
+    var ml=Math.round(m.letter*100), ms=Math.round(m.solfege*100);
+    var item=document.createElement('div');
+    item.className='ref-item';
+    item.innerHTML=
+      '<div class="ref-letter">'+n.letter+'</div>'+
+      '<div class="ref-arrow">'+
+        '<svg width="22" height="14" viewBox="0 0 22 14" fill="none" xmlns="http://www.w3.org/2000/svg">'+
+          '<line x1="1" y1="7" x2="21" y2="7" stroke="#C8C0B8" stroke-width="1.6" stroke-linecap="round"/>'+
+          '<polyline points="6,2 1,7 6,12" stroke="#C8C0B8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>'+
+          '<polyline points="16,2 21,7 16,12" stroke="#C8C0B8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>'+
+        '</svg>'+
+      '</div>'+
+      '<div class="ref-solfege">'+n.solfege.toUpperCase()+'</div>'+
+      '<div class="ref-bars">'+
+        '<div class="ref-bar-row">'+
+          '<span class="ref-bar-label l">'+n.letter+'→'+n.solfege.toUpperCase()+'</span>'+
+          '<div class="ref-bar-track"><div class="ref-bar-fill l" style="width:'+ml+'%"></div></div>'+
+          '<span class="ref-pct">'+ml+'%</span>'+
+        '</div>'+
+        '<div class="ref-bar-row">'+
+          '<span class="ref-bar-label s">'+n.solfege.toUpperCase()+'→'+n.letter+'</span>'+
+          '<div class="ref-bar-track"><div class="ref-bar-fill s" style="width:'+ms+'%"></div></div>'+
+          '<span class="ref-pct">'+ms+'%</span>'+
+        '</div>'+
+      '</div>';
+    list.appendChild(item);
+  });
+  div.appendChild(list);
+
+  var footer=document.createElement('div');
+  footer.className='ref-footer';
+  footer.innerHTML='<button class="btn-reset" id="bReset">Réinitialiser toute la progression</button>';
+  div.appendChild(footer);
+
+  root.innerHTML='';
+  root.appendChild(div);
+  document.getElementById('bBack').onclick=function(){ app.screen='home'; render(); };
+  document.getElementById('bReset').onclick=function(){
+    if(confirm('Effacer toute la progression ? Cette action est irréversible.')){ resetSR(); render(); }
+  };
+}
+
+render();
+</script>
+</body>
+</html>
